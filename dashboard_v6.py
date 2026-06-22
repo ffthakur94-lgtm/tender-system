@@ -79,6 +79,22 @@ CATEGORY_KEYWORDS = {
     ]
 }
 
+# Anything matching these is forced to "Other" even if it also matches a
+# category keyword above (e.g. "office building at hydro power station").
+# Checked first in detect_category, so exclusion always wins.
+EXCLUDE_KEYWORDS = [
+    "road", "rcc road", "pmgsy", "widening", "strengthening",
+    "hydro", "hydel", "dam", "barrage", "canal", "spillway", "tunnel",
+    "water supply", "pipeline", "sewerage", "stp", "sewage treatment",
+    "bridge", "culvert", "railway",
+    "bro", "barrack", "hangar", "defence", "jammu",
+]
+
+# Scope limits from the project brief: reject anything outside this band.
+MIN_TENDER_VALUE = 1_00_00_000      # ₹1 Cr
+MAX_TENDER_VALUE = 20_00_00_000     # ₹20 Cr
+
+
 def load_excel(file_name):
     if not os.path.exists(file_name):
         return pd.DataFrame()
@@ -128,18 +144,24 @@ def prepare_data(df):
 
 
 def detect_category(text):
+    """Return the matching category, or 'Other' if out of scope.
+
+    Returns a single category (not a joined list) so it lines up exactly
+    with the sidebar's category filter options. Exclusion keywords are
+    checked first and always win, so a tender that mentions both an
+    excluded sector (e.g. hydro, road) and a category keyword (e.g.
+    "office building") is still correctly dropped.
+    """
     text = str(text).lower()
 
-    matched = []
+    if any(keyword in text for keyword in EXCLUDE_KEYWORDS):
+        return "Other"
 
     for category, keywords in CATEGORY_KEYWORDS.items():
         if any(keyword in text for keyword in keywords):
-            matched.append(category)
+            return category
 
-    if not matched:
-        return "Other"
-
-    return ", ".join(matched)
+    return "Other"
 
 
 def make_clickable_link(url):
@@ -177,6 +199,34 @@ def show_table(df, title):
         display_df.to_html(escape=False, index=False),
         unsafe_allow_html=True
     )
+
+
+def apply_scope_filter(df):
+    """Enforce the project's actual scope at the data layer.
+
+    Drops anything categorized as 'Other' (roads, hydro, bridges, defence,
+    etc.) and anything outside the ₹1 Cr - ₹20 Cr band. This used to only
+    happen if a user manually set sidebar filters; now it happens before
+    the data ever reaches the UI, KPIs, or charts.
+
+    Returns (kept_df, excluded_count) so the caller can show a transparency
+    note about how many rows were dropped and why.
+    """
+    if df.empty:
+        return df, 0
+
+    before = len(df)
+
+    in_scope = (
+        (df["Category"] != "Other")
+        & (df["Tender Value Number"] >= MIN_TENDER_VALUE)
+        & (df["Tender Value Number"] <= MAX_TENDER_VALUE)
+    )
+
+    kept = df[in_scope].copy()
+    excluded_count = before - len(kept)
+
+    return kept, excluded_count
 
 
 def filter_data(df, search_text, portal_filter, type_filter, category_filter):
@@ -218,6 +268,15 @@ if not review_df.empty:
 if not backup_df.empty:
     backup_df["Category"] = backup_df["Search Text"].apply(detect_category)
 
+# Enforce scope (Construction / Prefab-PEB only, ₹1 Cr - ₹20 Cr) on every
+# dataframe, not just on whatever the sidebar happens to have selected.
+master_df, master_excluded = apply_scope_filter(master_df)
+best_df, best_excluded = apply_scope_filter(best_df)
+review_df, review_excluded = apply_scope_filter(review_df)
+backup_df, backup_excluded = apply_scope_filter(backup_df)
+
+total_excluded = master_excluded + best_excluded + review_excluded + backup_excluded
+
 
 st.title("🏗️ GBP Infraprojects")
 st.subheader("Tender Intelligence Dashboard V7")
@@ -226,6 +285,12 @@ st.caption("Construction + Prefab Opportunity Monitoring | ₹1 Cr – ₹20 Cr"
 if master_df.empty:
     st.error("No Excel data found. Keep this dashboard.py file in the same folder where scraper Excel files are saved.")
     st.stop()
+
+if total_excluded > 0:
+    st.info(
+        f"ℹ️ {total_excluded} tender(s) excluded across all sheets — outside "
+        f"Construction/Prefab-PEB scope or outside ₹1 Cr–₹20 Cr range."
+    )
 
 
 total_count = len(master_df)
