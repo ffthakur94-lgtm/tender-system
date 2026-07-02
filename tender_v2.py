@@ -1,5 +1,6 @@
 import asyncio
 # import aiohttp  # only needed when AI classifier is enabled
+from email.mime import text
 import json
 import re
 import pandas as pd
@@ -89,13 +90,87 @@ SITES = [
     },
 ]
 
+ROAD_EXCLUDE = [
+
+    "cc road",
+    "cement concrete road",
+    "rcc road",
+
+    "bituminous",
+    "asphalt",
+
+    "wmm",
+    "gsb",
+    "dbm",
+    "bc",
+
+    "road widening",
+    "road strengthening",
+    "road resurfacing",
+
+    "culvert",
+    "causeway",
+    "cross drainage",
+    "cd work"
+]
 # ── KEYWORDS ──────────────────────────────────────────────────────────────────
 
 SPECIAL_KEYWORDS = [
-    "prefab", "prefabricated", "pre fabricated",
-    "peb", "pre engineered building", "pre-engineered building",
+
+    "building",
+    "office building",
+    "office complex",
+    "administrative block",
+
+    "warehouse",
+    "godown",
+
+    "peb",
+    "pre engineered building",
+    "pre-engineered building",
+    "pre engineered steel building",
+
+    "prefab",
+    "prefabricated building",
+
+    "steel shed",
+
+    "site office",
+    "porta cabin",
+    "portable cabin",
+
+    "training centre",
+    "guest house",
+
+    "inspection bungalow",
+
+    "labour hutment",
+
+    "workshop",
+
+    "institutional building",
+
+    "school building",
+
+    "college building",
+
+    "hospital building",
+
+    "medical college",
+
+    "residential building",
+
+    "police station",
+
+    "fire station",
+
+    "sports complex",
+
+    "community centre",
+
+    "prefabricated", "pre fabricated",
     "pre engineered steel", "steel structure building",
-    "modular building", "portable cabin",
+    "modular building",
     "puf panel", "puff panel", "sandwich panel",
 ]
 
@@ -147,6 +222,37 @@ NEGATIVE_WORDS = [
 ]
 
 HARD_EXCLUDE = [
+
+    "water supply",
+    "pipeline",
+    "sewerage",
+
+    "hydro",
+    "dam",
+
+    "railway",
+    "track",
+
+    "maintenance",
+    "annual maintenance",
+    "general repair",
+
+    "operation",
+
+    "housekeeping",
+
+    "facility management",
+
+    "painting work",
+
+    "electrical maintenance",
+
+    "plumbing maintenance",
+
+    "camc",
+
+    "amc"
+
     " road ", "road work", "road construction", "highway", "flyover",
     "overbridge", "underpass", "bridge construction", "tunnel",
     "irrigation", "canal", "dam", "sewage", "water supply",
@@ -361,7 +467,7 @@ def is_captured(title, org, value, site):
         return False
 
     # Hard-exclude by title keywords
-    if any(w in raw_text for w in HARD_EXCLUDE):
+    if any(x in raw_text for x in HARD_EXCLUDE):
         return False
 
     # Reject if organisation itself is clearly irrelevant
